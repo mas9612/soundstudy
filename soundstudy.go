@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"log"
+	"math"
 	"os"
 )
 
@@ -56,11 +58,33 @@ func main() {
 	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
 	fmtChunk.BytesPerSec = uint32(fmtChunk.BlockSize) * fmtChunk.SamplesPerSec
 	dataChunk := DataChunk{
-		ChunkID:   [4]byte{'d', 'a', 't', 'a'},
-		ChunkSize: 0,
+		ChunkID: [4]byte{'d', 'a', 't', 'a'},
 	}
 
-	buf := make([]byte, hdr.ChunkSize+8)
+	// generate sine wave
+	samplingFreq := 44100
+	amplitude := 1
+	frequency := 440
+	var b bytes.Buffer
+	for i := 0; i < samplingFreq; i++ {
+		value := float64(amplitude) * math.Sin(2*math.Pi*float64(frequency)*float64(i)/float64(samplingFreq))
+		value = value / float64(amplitude) * 32767.0
+		v := int16(value)
+
+		// clipping to adjust for the range of 16 bit integer
+		if v > 32767 {
+			v = 32767
+		} else if v < -32768 {
+			v = -32768
+		}
+		binary.Write(&b, binary.LittleEndian, v)
+	}
+	dataChunk.ChunkSize = uint32(b.Len() * int(fmtChunk.Channel))
+	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
+	copy(dataChunk.Data, b.Bytes())
+
+	// create wave file
+	buf := make([]byte, hdr.ChunkSize+8+dataChunk.ChunkSize)
 
 	copy(buf, hdr.ChunkID[:])
 	binary.LittleEndian.PutUint32(buf[4:], hdr.ChunkSize)
@@ -77,6 +101,7 @@ func main() {
 
 	copy(buf[36:], dataChunk.ChunkID[:])
 	binary.LittleEndian.PutUint32(buf[40:], dataChunk.ChunkSize)
+	copy(buf[44:], dataChunk.Data)
 
 	file, err := os.OpenFile("test.wav", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
