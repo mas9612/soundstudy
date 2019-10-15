@@ -78,14 +78,6 @@ func main() {
 }
 
 func write(filename string, soundData []int16, samplingRate, bitDepth int, stereo bool) error {
-	var b bytes.Buffer
-	for _, d := range soundData {
-		binary.Write(&b, binary.LittleEndian, d)
-	}
-	dataChunk.ChunkSize = uint32(b.Len() * int(fmtChunk.Channel))
-	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
-	copy(dataChunk.Data, b.Bytes())
-
 	hdr := RIFFHeader{
 		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
 		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
@@ -96,8 +88,8 @@ func write(filename string, soundData []int16, samplingRate, bitDepth int, stere
 		ChunkSize:     FmtChunkLen - 8, // FmtChunkLen - len(ChunkID) - len(ChunkSize)
 		FormatType:    1,
 		Channel:       1,
-		SamplesPerSec: samplingRate,
-		BitsPerSample: bitDepth,
+		SamplesPerSec: uint32(samplingRate),
+		BitsPerSample: uint16(bitDepth),
 	}
 	if stereo {
 		fmtChunk.Channel = 2
@@ -107,6 +99,14 @@ func write(filename string, soundData []int16, samplingRate, bitDepth int, stere
 	dataChunk := DataChunk{
 		ChunkID: [4]byte{'d', 'a', 't', 'a'},
 	}
+
+	var b bytes.Buffer
+	for _, d := range soundData {
+		binary.Write(&b, binary.LittleEndian, d)
+	}
+	dataChunk.ChunkSize = uint32(b.Len() * int(fmtChunk.Channel))
+	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
+	copy(dataChunk.Data, b.Bytes())
 
 	buf := make([]byte, hdr.ChunkSize+8+dataChunk.ChunkSize)
 
