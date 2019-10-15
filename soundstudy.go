@@ -72,7 +72,7 @@ func main() {
 	samplingFreq := 44100
 	amplitude := 1
 	frequency := 440
-	var b bytes.Buffer
+	soundData := make([]int16, 0, samplingFreq)
 	for i := 0; i < samplingFreq; i++ {
 		value := float64(amplitude) * math.Sin(2*math.Pi*float64(frequency)*float64(i)/float64(samplingFreq))
 		fmt.Fprintf(plotDataFile, "%d %f\n", i+1, value)
@@ -85,7 +85,12 @@ func main() {
 		} else if v < -32768 {
 			v = -32768
 		}
-		binary.Write(&b, binary.LittleEndian, v)
+		soundData = append(soundData, v)
+	}
+
+	var b bytes.Buffer
+	for _, d := range soundData {
+		binary.Write(&b, binary.LittleEndian, d)
 	}
 	dataChunk.ChunkSize = uint32(b.Len() * int(fmtChunk.Channel))
 	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
