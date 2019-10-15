@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -61,6 +62,12 @@ func main() {
 		ChunkID: [4]byte{'d', 'a', 't', 'a'},
 	}
 
+	plotDataFile, err := os.OpenFile("wavedata", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer plotDataFile.Close()
+
 	// generate sine wave
 	samplingFreq := 44100
 	amplitude := 1
@@ -68,6 +75,7 @@ func main() {
 	var b bytes.Buffer
 	for i := 0; i < samplingFreq; i++ {
 		value := float64(amplitude) * math.Sin(2*math.Pi*float64(frequency)*float64(i)/float64(samplingFreq))
+		fmt.Fprintf(plotDataFile, "%d %f\n", i+1, value)
 		value = value / float64(amplitude) * 32767.0
 		v := int16(value)
 
