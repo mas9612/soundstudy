@@ -43,25 +43,6 @@ const (
 )
 
 func main() {
-	hdr := RIFFHeader{
-		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
-		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
-		FormatType: [4]byte{'W', 'A', 'V', 'E'},
-	}
-	fmtChunk := FmtChunk{
-		ChunkID:       [4]byte{'f', 'm', 't', ' '},
-		ChunkSize:     FmtChunkLen - 8, // FmtChunkLen - len(ChunkID) - len(ChunkSize)
-		FormatType:    1,
-		Channel:       1,
-		SamplesPerSec: 44100,
-		BitsPerSample: 16,
-	}
-	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
-	fmtChunk.BytesPerSec = uint32(fmtChunk.BlockSize) * fmtChunk.SamplesPerSec
-	dataChunk := DataChunk{
-		ChunkID: [4]byte{'d', 'a', 't', 'a'},
-	}
-
 	plotDataFile, err := os.OpenFile("wavedata", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Fatal(err)
@@ -91,6 +72,12 @@ func main() {
 	soundData = fadeIn(soundData, samplingFreq, 10)
 	soundData = fadeOut(soundData, samplingFreq, 10)
 
+	if err := write("test.wav", soundData, samplingFreq, 16, false); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func write(filename string, soundData []int16, samplingRate, bitDepth int, stereo bool) error {
 	var b bytes.Buffer
 	for _, d := range soundData {
 		binary.Write(&b, binary.LittleEndian, d)
@@ -99,7 +86,28 @@ func main() {
 	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
 	copy(dataChunk.Data, b.Bytes())
 
-	// create wave file
+	hdr := RIFFHeader{
+		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
+		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
+		FormatType: [4]byte{'W', 'A', 'V', 'E'},
+	}
+	fmtChunk := FmtChunk{
+		ChunkID:       [4]byte{'f', 'm', 't', ' '},
+		ChunkSize:     FmtChunkLen - 8, // FmtChunkLen - len(ChunkID) - len(ChunkSize)
+		FormatType:    1,
+		Channel:       1,
+		SamplesPerSec: samplingRate,
+		BitsPerSample: bitDepth,
+	}
+	if stereo {
+		fmtChunk.Channel = 2
+	}
+	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
+	fmtChunk.BytesPerSec = uint32(fmtChunk.BlockSize) * fmtChunk.SamplesPerSec
+	dataChunk := DataChunk{
+		ChunkID: [4]byte{'d', 'a', 't', 'a'},
+	}
+
 	buf := make([]byte, hdr.ChunkSize+8+dataChunk.ChunkSize)
 
 	copy(buf, hdr.ChunkID[:])
@@ -119,19 +127,21 @@ func main() {
 	binary.LittleEndian.PutUint32(buf[40:], dataChunk.ChunkSize)
 	copy(buf[44:], dataChunk.Data)
 
-	file, err := os.OpenFile("test.wav", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer file.Close()
 
 	n, err := file.Write(buf)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if n < len(buf) {
-		log.Fatal("short write")
+		return fmt.Errorf("short write")
 	}
+
+	return nil
 }
 
 // fadeIn applies fade-in to given soundData.
