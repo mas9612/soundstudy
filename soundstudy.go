@@ -88,6 +88,9 @@ func main() {
 		soundData = append(soundData, v)
 	}
 
+	soundData = fadeIn(soundData, samplingFreq, 10)
+	soundData = fadeOut(soundData, samplingFreq, 10)
+
 	var b bytes.Buffer
 	for _, d := range soundData {
 		binary.Write(&b, binary.LittleEndian, d)
@@ -129,4 +132,27 @@ func main() {
 	if n < len(buf) {
 		log.Fatal("short write")
 	}
+}
+
+// fadeIn applies fade-in to given soundData.
+// duration is in millisecond.
+func fadeIn(soundData []int16, samplingRate, duration int) []int16 {
+	fadePeriod := samplingRate / 1000 * duration
+	for i := 0; i < fadePeriod; i++ {
+		amplitudeRate := float64(i) / float64(fadePeriod)
+		soundData[i] = int16(float64(soundData[i]) * amplitudeRate)
+	}
+	return soundData
+}
+
+// fadeOut applies fade-out to given soundData.
+// duration is in millisecond.
+func fadeOut(soundData []int16, samplingRate, duration int) []int16 {
+	fadePeriod := samplingRate / 1000 * duration
+	startIdx := len(soundData) - fadePeriod
+	for i := 0; i < fadePeriod; i++ {
+		amplitudeRate := float64(float64(fadePeriod)-float64(i)) / float64(fadePeriod)
+		soundData[startIdx+i] = int16(float64(soundData[startIdx+i]) * amplitudeRate)
+	}
+	return soundData
 }
