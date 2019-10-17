@@ -72,12 +72,12 @@ func main() {
 	soundData = fadeIn(soundData, samplingFreq, 10)
 	soundData = fadeOut(soundData, samplingFreq, 10)
 
-	if err := write("test.wav", soundData, samplingFreq, 16, false); err != nil {
+	if err := write16bitMonaural("test.wav", soundData, samplingFreq); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func write(filename string, soundData []int16, samplingRate, bitDepth int, stereo bool) error {
+func write16bitMonaural(filename string, soundData []int16, samplingRate int) error {
 	hdr := RIFFHeader{
 		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
 		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
@@ -89,10 +89,7 @@ func write(filename string, soundData []int16, samplingRate, bitDepth int, stere
 		FormatType:    1,
 		Channel:       1,
 		SamplesPerSec: uint32(samplingRate),
-		BitsPerSample: uint16(bitDepth),
-	}
-	if stereo {
-		fmtChunk.Channel = 2
+		BitsPerSample: 16,
 	}
 	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
 	fmtChunk.BytesPerSec = uint32(fmtChunk.BlockSize) * fmtChunk.SamplesPerSec
@@ -102,7 +99,9 @@ func write(filename string, soundData []int16, samplingRate, bitDepth int, stere
 
 	var b bytes.Buffer
 	for _, d := range soundData {
-		binary.Write(&b, binary.LittleEndian, d)
+		if err := binary.Write(&b, binary.LittleEndian, d); err != nil {
+			return err
+		}
 	}
 	dataChunk.ChunkSize = uint32(b.Len() * int(fmtChunk.Channel))
 	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
