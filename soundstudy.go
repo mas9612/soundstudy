@@ -35,6 +35,9 @@ type DataChunk struct {
 	Data      []byte
 }
 
+// Waveform16 is the 16bit sound data.
+type Waveform16 []int16
+
 const (
 	// RIFFHeaderLen is the length of RIFF header in bytes.
 	RIFFHeaderLen = 12
@@ -43,20 +46,25 @@ const (
 )
 
 func main() {
-	plotDataFile, err := os.OpenFile("wavedata", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
+	// generate sine wave
+	frequency := 440
+	amplitude := 1
+	samplingRate := 44100
+
+	soundData := sineWave16(frequency, amplitude, samplingRate)
+	soundData = fadeIn(soundData, samplingRate, 10)
+	soundData = fadeOut(soundData, samplingRate, 10)
+
+	if err := write16bitMonaural("test.wav", soundData, samplingRate); err != nil {
 		log.Fatal(err)
 	}
-	defer plotDataFile.Close()
+}
 
-	// generate sine wave
-	samplingFreq := 44100
-	amplitude := 1
-	frequency := 440
-	soundData := make([]int16, 0, samplingFreq)
-	for i := 0; i < samplingFreq; i++ {
-		value := float64(amplitude) * math.Sin(2*math.Pi*float64(frequency)*float64(i)/float64(samplingFreq))
-		fmt.Fprintf(plotDataFile, "%d %f\n", i+1, value)
+func sineWave16(frequency, amplitude, samplingRate int) Waveform16 {
+	soundData := make(Waveform16, 0, samplingRate)
+
+	for i := 0; i < samplingRate; i++ {
+		value := float64(amplitude) * math.Sin(2*math.Pi*float64(frequency)*float64(i)/float64(samplingRate))
 		value = value / float64(amplitude) * 32767.0
 		v := int16(value)
 
@@ -69,15 +77,10 @@ func main() {
 		soundData = append(soundData, v)
 	}
 
-	soundData = fadeIn(soundData, samplingFreq, 10)
-	soundData = fadeOut(soundData, samplingFreq, 10)
-
-	if err := write16bitMonaural("test.wav", soundData, samplingFreq); err != nil {
-		log.Fatal(err)
-	}
+	return soundData
 }
 
-func write16bitMonaural(filename string, soundData []int16, samplingRate int) error {
+func write16bitMonaural(filename string, soundData Waveform16, samplingRate int) error {
 	hdr := RIFFHeader{
 		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
 		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
@@ -145,7 +148,7 @@ func write16bitMonaural(filename string, soundData []int16, samplingRate int) er
 
 // fadeIn applies fade-in to given soundData.
 // duration is in millisecond.
-func fadeIn(soundData []int16, samplingRate, duration int) []int16 {
+func fadeIn(soundData Waveform16, samplingRate, duration int) Waveform16 {
 	fadePeriod := samplingRate / 1000 * duration
 	for i := 0; i < fadePeriod; i++ {
 		amplitudeRate := float64(i) / float64(fadePeriod)
@@ -156,7 +159,7 @@ func fadeIn(soundData []int16, samplingRate, duration int) []int16 {
 
 // fadeOut applies fade-out to given soundData.
 // duration is in millisecond.
-func fadeOut(soundData []int16, samplingRate, duration int) []int16 {
+func fadeOut(soundData Waveform16, samplingRate, duration int) Waveform16 {
 	fadePeriod := samplingRate / 1000 * duration
 	startIdx := len(soundData) - fadePeriod
 	for i := 0; i < fadePeriod; i++ {
