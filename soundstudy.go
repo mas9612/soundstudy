@@ -47,8 +47,8 @@ const (
 
 func main() {
 	// generate sine wave
-	frequency := 440
-	amplitude := 1
+	frequency := 440.0
+	amplitude := 1.0
 	samplingRate := 44100
 
 	soundData := sineWave16(frequency, amplitude, samplingRate)
@@ -60,18 +60,20 @@ func main() {
 	}
 }
 
-func sineWave16(frequency, amplitude, samplingRate int) Waveform16 {
+func sineWave16(frequency, amplitude float64, samplingRate int) Waveform16 {
 	soundData := make(Waveform16, 0, samplingRate)
 
 	for i := 0; i < samplingRate; i++ {
-		value := float64(amplitude) * math.Sin(2*math.Pi*float64(frequency)*float64(i)/float64(samplingRate))
-		value = value / float64(amplitude) * 32767.0
+		value := amplitude * math.Sin(2*math.Pi*frequency*float64(i)/float64(samplingRate))
+		value *= 32767.0
 		v := int16(value)
 
 		// clipping to adjust for the range of 16 bit integer
 		if v > 32767 {
+			fmt.Println(v)
 			v = 32767
 		} else if v < -32768 {
+			fmt.Println(v)
 			v = -32768
 		}
 		soundData = append(soundData, v)
