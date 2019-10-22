@@ -12,11 +12,11 @@ func main() {
 	amplitude := 1.0
 	samplingRate := 44100
 
-	soundData := wave.SineWave16(frequency, amplitude, samplingRate)
-	soundData = wave.FadeIn(soundData, samplingRate, 10)
-	soundData = wave.FadeOut(soundData, samplingRate, 10)
+	waveform := wave.SineWave(16, false, frequency, amplitude, samplingRate)
+	waveform = wave.FadeIn(waveform, 10)
+	waveform = wave.FadeOut(waveform, 10)
 
-	if err := wave.Write16bitMonaural("test.wav", soundData, samplingRate); err != nil {
+	if err := wave.Write("test.wav", waveform); err != nil {
 		log.Fatal(err)
 	}
 }

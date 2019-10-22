@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 	"os"
 )
@@ -34,8 +35,12 @@ type DataChunk struct {
 	Data      []byte
 }
 
-// Waveform16 is the 16bit sound data.
-type Waveform16 []int16
+type Waveform struct {
+	SamplingRate int
+	Channel      int
+	Stereo       bool
+	Data         interface{}
+}
 
 const (
 	// RIFFHeaderLen is the length of RIFF header in bytes.
@@ -45,31 +50,40 @@ const (
 )
 
 // SineWave16 generates the 16 bit monaural sine wave with given parameters.
-func SineWave16(frequency, amplitude float64, samplingRate int) Waveform16 {
-	soundData := make(Waveform16, 0, samplingRate)
-
-	for i := 0; i < samplingRate; i++ {
-		value := amplitude * math.Sin(2*math.Pi*frequency*float64(i)/float64(samplingRate))
-		value *= 32767.0
-		v := int16(value)
-
-		// clipping to adjust for the range of 16 bit integer
-		if v > 32767 {
-			fmt.Println(v)
-			v = 32767
-		} else if v < -32768 {
-			fmt.Println(v)
-			v = -32768
-		}
-		soundData = append(soundData, v)
+func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRate int) Waveform {
+	waveform := Waveform{
+		SamplingRate: samplingRate,
+		Channel:      channel,
+		Stereo:       false,
 	}
 
-	return soundData
+	switch channel {
+	case 16:
+		soundData := make([]int16, 0, samplingRate)
+		for i := 0; i < samplingRate; i++ {
+			value := amplitude * math.Sin(2*math.Pi*frequency*float64(i)/float64(samplingRate))
+			value *= 32767.0
+			v := int16(value)
+
+			// clipping to adjust for the range of 16 bit integer
+			if v > 32767 {
+				fmt.Println(v)
+				v = 32767
+			} else if v < -32768 {
+				fmt.Println(v)
+				v = -32768
+			}
+			soundData = append(soundData, v)
+		}
+		waveform.Data = soundData
+	default:
+		log.Println("unsupported parameters")
+	}
+	return waveform
 }
 
-// Write16bitMonaural writes given audio data to wave file.
-// soundData must be the type Waveform16 which indicates that the audio is 16 bit monaural.
-func Write16bitMonaural(filename string, soundData Waveform16, samplingRate int) error {
+// Write writes given audio data to wave file.
+func Write(filename string, waveform Waveform) error {
 	hdr := RIFFHeader{
 		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
 		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
@@ -80,7 +94,7 @@ func Write16bitMonaural(filename string, soundData Waveform16, samplingRate int)
 		ChunkSize:     FmtChunkLen - 8, // FmtChunkLen - len(ChunkID) - len(ChunkSize)
 		FormatType:    1,
 		Channel:       1,
-		SamplesPerSec: uint32(samplingRate),
+		SamplesPerSec: uint32(waveform.SamplingRate),
 		BitsPerSample: 16,
 	}
 	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
@@ -90,10 +104,16 @@ func Write16bitMonaural(filename string, soundData Waveform16, samplingRate int)
 	}
 
 	var b bytes.Buffer
-	for _, d := range soundData {
-		if err := binary.Write(&b, binary.LittleEndian, d); err != nil {
-			return err
+	switch waveform.Channel {
+	case 16:
+		soundData := waveform.Data.([]int16)
+		for _, d := range soundData {
+			if err := binary.Write(&b, binary.LittleEndian, d); err != nil {
+				return err
+			}
 		}
+	default:
+		return fmt.Errorf("given waveform has not supported")
 	}
 	dataChunk.ChunkSize = uint32(b.Len() * int(fmtChunk.Channel))
 	dataChunk.Data = make([]byte, dataChunk.ChunkSize)
@@ -137,23 +157,52 @@ func Write16bitMonaural(filename string, soundData Waveform16, samplingRate int)
 
 // FadeIn applies fade-in to given soundData.
 // duration is in millisecond.
-func FadeIn(soundData Waveform16, samplingRate, duration int) Waveform16 {
-	fadePeriod := samplingRate / 1000 * duration
-	for i := 0; i < fadePeriod; i++ {
-		amplitudeRate := float64(i) / float64(fadePeriod)
-		soundData[i] = int16(float64(soundData[i]) * amplitudeRate)
+func FadeIn(waveform Waveform, duration int) Waveform {
+	fadePeriod := waveform.SamplingRate / 1000 * duration
+
+	ret := Waveform{
+		SamplingRate: waveform.SamplingRate,
+		Channel:      waveform.Channel,
 	}
-	return soundData
+
+	switch waveform.Channel {
+	case 16:
+		soundData := waveform.Data.([]int16)
+		for i := 0; i < fadePeriod; i++ {
+			amplitudeRate := float64(i) / float64(fadePeriod)
+			soundData[i] = int16(float64(soundData[i]) * amplitudeRate)
+		}
+		ret.Data = soundData
+	default:
+		log.Println("given Waveform has not supported")
+		return waveform
+	}
+	return ret
 }
 
 // FadeOut applies fade-out to given soundData.
 // duration is in millisecond.
-func FadeOut(soundData Waveform16, samplingRate, duration int) Waveform16 {
-	fadePeriod := samplingRate / 1000 * duration
-	startIdx := len(soundData) - fadePeriod
-	for i := 0; i < fadePeriod; i++ {
-		amplitudeRate := float64(float64(fadePeriod)-float64(i)) / float64(fadePeriod)
-		soundData[startIdx+i] = int16(float64(soundData[startIdx+i]) * amplitudeRate)
+func FadeOut(waveform Waveform, duration int) Waveform {
+	fadePeriod := waveform.SamplingRate / 1000 * duration
+
+	ret := Waveform{
+		SamplingRate: waveform.SamplingRate,
+		Channel:      waveform.Channel,
 	}
-	return soundData
+
+	switch waveform.Channel {
+	case 16:
+		soundData := waveform.Data.([]int16)
+		startIdx := len(soundData) - fadePeriod
+		for i := 0; i < fadePeriod; i++ {
+			amplitudeRate := (float64(fadePeriod) - float64(i)) / float64(fadePeriod)
+			soundData[startIdx+i] = int16(float64(soundData[startIdx+i]) * amplitudeRate)
+		}
+		ret.Data = soundData
+	default:
+		log.Println("given Waveform has not supported")
+		return waveform
+	}
+
+	return ret
 }
