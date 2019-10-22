@@ -1,8 +1,9 @@
 #!/bin/bash
 
 gnuplot <<EOF
-    set xrange [0:220]
+    set xrange [0:44100]
+    set size ratio 0.5
     set terminal png
     set output 'wavedata.png'
-    plot "wavedata" with linespoints
+    plot "wavedata" with lines
 EOF

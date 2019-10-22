@@ -39,7 +39,8 @@ type Waveform struct {
 	SamplingRate int
 	Channel      int
 	Stereo       bool
-	Data         interface{}
+	Data         []float64
+	max          float64
 }
 
 const (
@@ -50,8 +51,8 @@ const (
 )
 
 // SineWave16 generates the 16 bit monaural sine wave with given parameters.
-func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRate int) Waveform {
-	waveform := Waveform{
+func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRate int) *Waveform {
+	waveform := &Waveform{
 		SamplingRate: samplingRate,
 		Channel:      channel,
 		Stereo:       false,
@@ -59,21 +60,13 @@ func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRa
 
 	switch channel {
 	case 16:
-		soundData := make([]int16, 0, samplingRate)
+		soundData := make([]float64, 0, samplingRate)
 		for i := 0; i < samplingRate; i++ {
 			value := amplitude * math.Sin(2*math.Pi*frequency*float64(i)/float64(samplingRate))
-			value *= 32767.0
-			v := int16(value)
-
-			// clipping to adjust for the range of 16 bit integer
-			if v > 32767 {
-				fmt.Println(v)
-				v = 32767
-			} else if v < -32768 {
-				fmt.Println(v)
-				v = -32768
+			if value > waveform.max {
+				waveform.max = value
 			}
-			soundData = append(soundData, v)
+			soundData = append(soundData, value)
 		}
 		waveform.Data = soundData
 	default:
@@ -82,8 +75,33 @@ func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRa
 	return waveform
 }
 
+func normalize(waveform *Waveform) (interface{}, error) {
+	switch waveform.Channel {
+	case 8:
+		data := make([]uint8, len(waveform.Data))
+		return data, nil
+	case 16:
+		data := make([]int16, len(waveform.Data))
+
+		for i, d := range waveform.Data {
+			value := d / waveform.max * 32767.0
+			if value > 32767 {
+				value = 32767
+			} else if value < -32768 {
+				value = -32768
+			}
+
+			data[i] = int16(value)
+		}
+
+		return data, nil
+	default:
+		return nil, fmt.Errorf("normalize: invalid waveform data")
+	}
+}
+
 // Write writes given audio data to wave file.
-func Write(filename string, waveform Waveform) error {
+func Write(filename string, waveform *Waveform) error {
 	hdr := RIFFHeader{
 		ChunkID:    [4]byte{'R', 'I', 'F', 'F'},
 		ChunkSize:  RIFFHeaderLen + FmtChunkLen,
@@ -95,7 +113,7 @@ func Write(filename string, waveform Waveform) error {
 		FormatType:    1,
 		Channel:       1,
 		SamplesPerSec: uint32(waveform.SamplingRate),
-		BitsPerSample: 16,
+		BitsPerSample: uint16(waveform.Channel),
 	}
 	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
 	fmtChunk.BytesPerSec = uint32(fmtChunk.BlockSize) * fmtChunk.SamplesPerSec
@@ -103,11 +121,15 @@ func Write(filename string, waveform Waveform) error {
 		ChunkID: [4]byte{'d', 'a', 't', 'a'},
 	}
 
+	normalizedSoundData, err := normalize(waveform)
+	if err != nil {
+		return err
+	}
+
 	var b bytes.Buffer
 	switch waveform.Channel {
 	case 16:
-		soundData := waveform.Data.([]int16)
-		for _, d := range soundData {
+		for _, d := range normalizedSoundData.([]int16) {
 			if err := binary.Write(&b, binary.LittleEndian, d); err != nil {
 				return err
 			}
@@ -155,54 +177,101 @@ func Write(filename string, waveform Waveform) error {
 	return nil
 }
 
+// WriteWaveData writes wave data to given filename to plot wave with gnuplot.
+func WriteWaveData(filename string, waveform *Waveform) error {
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for i, d := range waveform.Data {
+		fmt.Fprintf(file, "%d %f\n", i+1, d)
+	}
+
+	return nil
+}
+
 // FadeIn applies fade-in to given soundData.
 // duration is in millisecond.
-func FadeIn(waveform Waveform, duration int) Waveform {
+func FadeIn(waveform *Waveform, duration int) *Waveform {
 	fadePeriod := waveform.SamplingRate / 1000 * duration
 
-	ret := Waveform{
+	ret := &Waveform{
 		SamplingRate: waveform.SamplingRate,
 		Channel:      waveform.Channel,
+		Stereo:       waveform.Stereo,
+		Data:         waveform.Data,
+		max:          waveform.max,
 	}
 
-	switch waveform.Channel {
-	case 16:
-		soundData := waveform.Data.([]int16)
-		for i := 0; i < fadePeriod; i++ {
-			amplitudeRate := float64(i) / float64(fadePeriod)
-			soundData[i] = int16(float64(soundData[i]) * amplitudeRate)
-		}
-		ret.Data = soundData
-	default:
-		log.Println("given Waveform has not supported")
-		return waveform
+	for i := 0; i < fadePeriod; i++ {
+		amplitudeRate := float64(i) / float64(fadePeriod)
+		ret.Data[i] = waveform.Data[i] * amplitudeRate
 	}
+
 	return ret
 }
 
 // FadeOut applies fade-out to given soundData.
 // duration is in millisecond.
-func FadeOut(waveform Waveform, duration int) Waveform {
+func FadeOut(waveform *Waveform, duration int) *Waveform {
 	fadePeriod := waveform.SamplingRate / 1000 * duration
 
-	ret := Waveform{
+	ret := &Waveform{
 		SamplingRate: waveform.SamplingRate,
 		Channel:      waveform.Channel,
+		Stereo:       waveform.Stereo,
+		Data:         waveform.Data,
+		max:          waveform.max,
 	}
 
-	switch waveform.Channel {
-	case 16:
-		soundData := waveform.Data.([]int16)
-		startIdx := len(soundData) - fadePeriod
-		for i := 0; i < fadePeriod; i++ {
-			amplitudeRate := (float64(fadePeriod) - float64(i)) / float64(fadePeriod)
-			soundData[startIdx+i] = int16(float64(soundData[startIdx+i]) * amplitudeRate)
-		}
-		ret.Data = soundData
-	default:
-		log.Println("given Waveform has not supported")
-		return waveform
+	startIdx := len(waveform.Data) - fadePeriod
+	for i := 0; i < fadePeriod; i++ {
+		amplitudeRate := (float64(fadePeriod) - float64(i)) / float64(fadePeriod)
+		ret.Data[startIdx+i] = waveform.Data[startIdx+i] * amplitudeRate
 	}
 
 	return ret
+}
+
+// Add adds two wave and returns the new waveform data.
+func Add(wave1, wave2 *Waveform) (*Waveform, error) {
+	if wave1.Channel != wave2.Channel {
+		return nil, fmt.Errorf("wave1 and wave2 must have same channel bit")
+	}
+	if wave1.SamplingRate != wave2.SamplingRate {
+		return nil, fmt.Errorf("wave1 and wave2 must have same sampling rate")
+	}
+	if wave1.Stereo != wave2.Stereo {
+		return nil, fmt.Errorf("wave1 and wave2 must be both stereo or both monaural")
+	}
+
+	waveform := &Waveform{
+		Channel:      wave1.Channel,
+		SamplingRate: wave1.SamplingRate,
+		Stereo:       wave1.Stereo,
+	}
+	switch waveform.Channel {
+	case 16:
+		newSoundLen := intMax(len(wave1.Data), len(wave1.Data))
+		waveform.Data = make([]float64, newSoundLen)
+		for i := 0; i < newSoundLen; i++ {
+			waveform.Data[i] = wave1.Data[i] + wave2.Data[i]
+			if waveform.Data[i] > waveform.max {
+				waveform.max = waveform.Data[i]
+			}
+		}
+	default:
+		return nil, fmt.Errorf("invalid channel '%d'", waveform.Channel)
+	}
+
+	return waveform, nil
+}
+
+func intMax(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
