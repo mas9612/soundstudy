@@ -37,7 +37,7 @@ type DataChunk struct {
 
 type Waveform struct {
 	SamplingRate int
-	Channel      int
+	BitDepth     int
 	Stereo       bool
 	Data         []float64
 	max          float64
@@ -51,14 +51,14 @@ const (
 )
 
 // SineWave16 generates the 16 bit monaural sine wave with given parameters.
-func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRate int) *Waveform {
+func SineWave(bitDepth int, stereo bool, frequency, amplitude float64, samplingRate int) *Waveform {
 	waveform := &Waveform{
 		SamplingRate: samplingRate,
-		Channel:      channel,
+		BitDepth:     bitDepth,
 		Stereo:       false,
 	}
 
-	switch channel {
+	switch bitDepth {
 	case 16:
 		soundData := make([]float64, 0, samplingRate)
 		for i := 0; i < samplingRate; i++ {
@@ -76,7 +76,7 @@ func SineWave(channel int, stereo bool, frequency, amplitude float64, samplingRa
 }
 
 func normalize(waveform *Waveform) (interface{}, error) {
-	switch waveform.Channel {
+	switch waveform.BitDepth {
 	case 8:
 		data := make([]uint8, len(waveform.Data))
 		return data, nil
@@ -113,7 +113,7 @@ func Write(filename string, waveform *Waveform) error {
 		FormatType:    1,
 		Channel:       1,
 		SamplesPerSec: uint32(waveform.SamplingRate),
-		BitsPerSample: uint16(waveform.Channel),
+		BitsPerSample: uint16(waveform.BitDepth),
 	}
 	fmtChunk.BlockSize = fmtChunk.BitsPerSample * fmtChunk.Channel / 8
 	fmtChunk.BytesPerSec = uint32(fmtChunk.BlockSize) * fmtChunk.SamplesPerSec
@@ -127,7 +127,7 @@ func Write(filename string, waveform *Waveform) error {
 	}
 
 	var b bytes.Buffer
-	switch waveform.Channel {
+	switch waveform.BitDepth {
 	case 16:
 		for _, d := range normalizedSoundData.([]int16) {
 			if err := binary.Write(&b, binary.LittleEndian, d); err != nil {
@@ -199,7 +199,7 @@ func FadeIn(waveform *Waveform, duration int) *Waveform {
 
 	ret := &Waveform{
 		SamplingRate: waveform.SamplingRate,
-		Channel:      waveform.Channel,
+		BitDepth:     waveform.BitDepth,
 		Stereo:       waveform.Stereo,
 		Data:         waveform.Data,
 		max:          waveform.max,
@@ -220,7 +220,7 @@ func FadeOut(waveform *Waveform, duration int) *Waveform {
 
 	ret := &Waveform{
 		SamplingRate: waveform.SamplingRate,
-		Channel:      waveform.Channel,
+		BitDepth:     waveform.BitDepth,
 		Stereo:       waveform.Stereo,
 		Data:         waveform.Data,
 		max:          waveform.max,
@@ -237,8 +237,8 @@ func FadeOut(waveform *Waveform, duration int) *Waveform {
 
 // Add adds two wave and returns the new waveform data.
 func Add(wave1, wave2 *Waveform) (*Waveform, error) {
-	if wave1.Channel != wave2.Channel {
-		return nil, fmt.Errorf("wave1 and wave2 must have same channel bit")
+	if wave1.BitDepth != wave2.BitDepth {
+		return nil, fmt.Errorf("wave1 and wave2 must have same bit depth")
 	}
 	if wave1.SamplingRate != wave2.SamplingRate {
 		return nil, fmt.Errorf("wave1 and wave2 must have same sampling rate")
@@ -248,7 +248,7 @@ func Add(wave1, wave2 *Waveform) (*Waveform, error) {
 	}
 
 	waveform := &Waveform{
-		Channel:      wave1.Channel,
+		BitDepth:     wave1.BitDepth,
 		SamplingRate: wave1.SamplingRate,
 		Stereo:       wave1.Stereo,
 	}
@@ -274,7 +274,7 @@ func intMax(a, b int) int {
 // Gain adjusts the amplitude of waveform.
 func Gain(waveform *Waveform, gain float64) *Waveform {
 	ret := &Waveform{
-		Channel:      waveform.Channel,
+		BitDepth:     waveform.BitDepth,
 		SamplingRate: waveform.SamplingRate,
 		Stereo:       waveform.Stereo,
 		Data:         waveform.Data,
