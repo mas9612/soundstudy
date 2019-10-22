@@ -84,7 +84,7 @@ func normalize(waveform *Waveform) (interface{}, error) {
 		data := make([]int16, len(waveform.Data))
 
 		for i, d := range waveform.Data {
-			value := d / waveform.max * 32767.0
+			value := d * 32767.0
 			if value > 32767 {
 				value = 32767
 			} else if value < -32768 {
@@ -252,18 +252,13 @@ func Add(wave1, wave2 *Waveform) (*Waveform, error) {
 		SamplingRate: wave1.SamplingRate,
 		Stereo:       wave1.Stereo,
 	}
-	switch waveform.Channel {
-	case 16:
-		newSoundLen := intMax(len(wave1.Data), len(wave1.Data))
-		waveform.Data = make([]float64, newSoundLen)
-		for i := 0; i < newSoundLen; i++ {
-			waveform.Data[i] = wave1.Data[i] + wave2.Data[i]
-			if waveform.Data[i] > waveform.max {
-				waveform.max = waveform.Data[i]
-			}
+	newSoundLen := intMax(len(wave1.Data), len(wave1.Data))
+	waveform.Data = make([]float64, newSoundLen)
+	for i := 0; i < newSoundLen; i++ {
+		waveform.Data[i] = wave1.Data[i] + wave2.Data[i]
+		if waveform.Data[i] > waveform.max {
+			waveform.max = waveform.Data[i]
 		}
-	default:
-		return nil, fmt.Errorf("invalid channel '%d'", waveform.Channel)
 	}
 
 	return waveform, nil
@@ -274,4 +269,21 @@ func intMax(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Gain adjusts the amplitude of waveform.
+func Gain(waveform *Waveform, gain float64) *Waveform {
+	ret := &Waveform{
+		Channel:      waveform.Channel,
+		SamplingRate: waveform.SamplingRate,
+		Stereo:       waveform.Stereo,
+		Data:         waveform.Data,
+		max:          waveform.max,
+	}
+
+	for i := range waveform.Data {
+		waveform.Data[i] *= gain
+	}
+
+	return ret
 }
