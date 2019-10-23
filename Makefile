@@ -1,7 +1,7 @@
 GOBIN := go
 BINNAME := soundstudy
 
-all: test build plot
+all: test build
 
 .PHONY: build
 build:
@@ -11,6 +11,7 @@ build:
 test:
 	$(GOBIN) test -v ./...
 
-.PHONY: plot
-plot:
+.PHONY: run
+run:
+	./$(BINNAME)
 	./plot_sample.sh

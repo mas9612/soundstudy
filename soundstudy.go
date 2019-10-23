@@ -13,7 +13,7 @@ func main() {
 
 	waveform := wave.SineWave(16, false, frequency, 1.0, samplingRate)
 	for i := 2; i <= 44; i++ {
-		wf := wave.SineWave(16, false, frequency, 1.0/float64(i), samplingRate)
+		wf := wave.SineWave(16, false, frequency*float64(i), 1.0/float64(i), samplingRate)
 
 		var err error
 		waveform, err = wave.Add(waveform, wf)
